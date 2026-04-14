@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dino Duel — Pretext Edition</title>
+  <meta name="description" content="A 2-player competitive Chrome Dino runner. Jump, duck, survive — outlast your opponent!">
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #1a1a1a;
+      font-family: 'Courier New', Courier, monospace;
+      color: #cacaca;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: bold;
+      letter-spacing: 3px;
+      margin-bottom: 2px;
+      color: #cacaca;
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      font-size: 10px;
+      color: #666;
+      letter-spacing: 4px;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+
+    #game-wrapper {
+      position: relative;
+    }
+
+    #game-container {
+      position: relative;
+      background: #1a1a1a;
+    }
+
+    canvas {
+      display: block;
+      background-color: transparent;
+      image-rendering: pixelated;
+    }
+
+    .midline {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background-image: repeating-linear-gradient(
+        to right,
+        #cacaca 0, #cacaca 8px,
+        transparent 8px, transparent 20px
+      );
+      transform: translateY(-50%);
+      opacity: 0.25;
+      pointer-events: none;
+    }
+
+    .overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(26, 26, 26, 0.88);
+      z-index: 10;
+    }
+
+    .overlay-title {
+      font-size: 16px;
+      font-weight: bold;
+      letter-spacing: 6px;
+      margin-bottom: 14px;
+      color: #cacaca;
+    }
+
+    .overlay-msg {
+      font-size: 12px;
+      color: #cacaca;
+      margin-bottom: 6px;
+    }
+
+    .overlay-sub {
+      font-size: 10px;
+      color: #666;
+      margin-bottom: 16px;
+    }
+
+    .game-over-title {
+      font-size: 16px;
+      font-weight: bold;
+      letter-spacing: 8px;
+      color: #cacaca;
+      margin-bottom: 12px;
+    }
+
+    .winner-text {
+      font-size: 14px;
+      color: #cacaca;
+      margin-bottom: 4px;
+      font-weight: bold;
+    }
+
+    .score-display {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 18px;
+    }
+
+    .btn {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 10px 28px;
+      border: 2px solid #cacaca;
+      background: transparent;
+      color: #cacaca;
+      cursor: pointer;
+      letter-spacing: 2px;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .btn:hover {
+      background: #cacaca;
+      color: #1a1a1a;
+    }
+
+    .hint {
+      font-size: 9px;
+      color: #555;
+      margin-top: 10px;
+      letter-spacing: 1px;
+    }
+
+    .controls-bar {
+      display: flex;
+      justify-content: space-between;
+      width: 1000px;
+      padding: 8px 4px 0;
+      font-size: 10px;
+      color: #555;
+    }
+
+    .controls-bar strong {
+      display: block;
+      margin-bottom: 2px;
+      color: #777;
+      font-size: 11px;
+    }
+
+    .controls-bar .right {
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-type="module">
+    const { useState, useEffect, useRef } = React;
+
+    const W = 1000;
+    const H = 600;
+    const TOP_Y = 200;
+    const BOT_Y = 500;
+    const PX = 3;
+    const COLOR = '#cacaca';
+
+    // ─── Original-style pixel sprites (my own pixel art) ───
+
+    const SPRITES = {
+
+      // ── T-Rex running frame 1 (right leg forward) ──
+      dinoRun1: [
+        "            XXXXXX   ",
+        "           XXXXXXXX  ",
+        "           XXXXXXXX  ",
+        "           XXX XXXXX ",
+        "           XXXXXXXXX ",
+        "           XXXXXXXXX ",
+        "           XXXXXXXXX ",
+        "           XXXXXXX   ",
+        "           XXXXXX    ",
+        "     X    XXXXXXXX   ",
+        "     XX   XXXXXXXXX  ",
+        "     XXX  XXXXXXXX   ",
+        "     XXXXXXXXXXXXX   ",
+        "     XXXXXXXXXXXXX   ",
+        "      XXXXXXXXXXXX   ",
+        "       XXXXXXXXXX    ",
+        "        XXXXXXXX     ",
+        "         XXXXXX      ",
+        "          XXXX       ",
+        "          XX XX      ",
+        "          XX  X      ",
+        "          XX  XX     ",
+        "           X         ",
+      ],
+
+      // ── T-Rex running frame 2 (left leg forward) ──
+      dinoRun2: [
+        "            XXXXXX   ",
+        "           XXXXXXXX  ",
+        "           XXXXXXXX  ",
+        "           XXX XXXXX ",
+        "           XXXXXXXXX ",
+        "           XXXXXXXXX ",
+        "           XXXXXXXXX ",
+        "           XXXXXXX   ",
+        "           XXXXXX    ",
+        "     X    XXXXXXXX   ",
+        "     XX   XXXXXXXXX  ",
+        "     XXX  XXXXXXXX   ",
+        "     XXXXXXXXXXXXX   ",
+        "     XXXXXXXXXXXXX   ",
+        "      XXXXXXXXXXXX   ",
+        "       XXXXXXXXXX    ",
+        "        XXXXXXXX     ",
+        "         XXXXXX      ",
+        "          XXXX       ",
+        "          XX XX      ",
+        "           X XX      ",
+        "          XX         ",
+        "                     ",
+      ],
+
+      // ── T-Rex dead (X eyes) ──
+      dinoDead: [
+        "            XXXXXX   ",
+        "           XXXXXXXX  ",
+        "           XXXXXXXX  ",
+        "           X X XXXXX ",
+        "           XXXXXXXXX ",
+        "           XXXXXXXXX ",
+        "           XXXXXXXXX ",
+        "           XXXXXXX   ",
+        "           XXXXXX    ",
+        "     X    XXXXXXXX   ",
+        "     XX   XXXXXXXXX  ",
+        "     XXX  XXXXXXXX   ",
+        "     XXXXXXXXXXXXX   ",
+        "     XXXXXXXXXXXXX   ",
+        "      XXXXXXXXXXXX   ",
+        "       XXXXXXXXXX    ",
+        "        XXXXXXXX     ",
+        "         XXXXXX      ",
+        "          XXXX       ",
+        "          XX XX      ",
+        "          XX  XX     ",
+        "          XX  XX     ",
+        "                     ",
+      ],
+
+      // ── T-Rex ducking frame 1 ──
+      dinoDuck1: [
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "              XXXXXX     ",
+        "   XX       XXXXXXXXX    ",
+        "   XX      XXXXXXXXXX    ",
+        "   XXX    XXXXXXXXXXX    ",
+        "   XXXXXXXXXXXXXXXX XX   ",
+        "    XXXXXXXXXXXXXXXXXXX  ",
+        "     XXXXXXXXXXXXXXXXXXX ",
+        "      XXXXXXXXXXXXXXXXX  ",
+        "        XXXXXXXXXXX      ",
+        "        XX      XX      ",
+        "        XX       X      ",
+      ],
+
+      // ── T-Rex ducking frame 2 ──
+      dinoDuck2: [
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "                         ",
+        "              XXXXXX     ",
+        "   XX       XXXXXXXXX    ",
+        "   XX      XXXXXXXXXX    ",
+        "   XXX    XXXXXXXXXXX    ",
+        "   XXXXXXXXXXXXXXXX XX   ",
+        "    XXXXXXXXXXXXXXXXXXX  ",
+        "     XXXXXXXXXXXXXXXXXXX ",
+        "      XXXXXXXXXXXXXXXXX  ",
+        "        XXXXXXXXXXX      ",
+        "         XX    XX        ",
+        "          X     XX       ",
+      ],
+
+      // ── Small single cactus ──
+      cactusSmall: [
+        "    XX    ",
+        "    XX    ",
+        "    XX    ",
+        "    XX    ",
+        " X  XX    ",
+        " X  XX  X ",
+        " X  XX  X ",
+        " X  XX  X ",
+        " XX XX  X ",
+        " XX XX XX ",
+        " XXXXXXXX ",
+        " XXXXXXXX ",
+        "  XXXXXX  ",
+        "    XX    ",
+        "    XX    ",
+        "    XX    ",
+        "    XX    ",
+        "    XX    ",
+      ],
+
+      // ── Large cactus cluster ──
+      cactusLarge: [
+        "    XX       XX    ",
+        "    XX       XX    ",
+        "    XX   XX  XX    ",
+        "    XX   XX  XX    ",
+        " X  XX   XX  XX  X ",
+        " X  XX   XX  XX  X ",
+        " X  XX   XX  XX  X ",
+        " X  XX   XX  XX  X ",
+        " XX XX   XX  XX XX ",
+        " XXXXXX  XXXXXXX X ",
+        " XXXXXX  XXXXXXXX  ",
+        "  XXXX    XXXXXX   ",
+        "    XX      XX     ",
+        "    XX      XX     ",
+        "    XX      XX     ",
+        "    XX      XX     ",
+        "    XX      XX     ",
+        "    XX      XX     ",
+      ],
+
+      // ── Bird wings up ──
+      birdUp: [
+        "       X     ",
+        "      XXX    ",
+        "    XXXXX    ",
+        "  XXXXXXX    ",
+        " XXXXXXXXXX  ",
+        "   XX  XXX   ",
+        "   X         ",
+      ],
+
+      // ── Bird wings down ──
+      birdDown: [
+        "             ",
+        "             ",
+        "   X     XX  ",
+        "  XXXXXXXXX  ",
+        " XXXXXXXXXX  ",
+        "       XXXX  ",
+        "      XX X   ",
+      ],
+
+      // ── Cloud ──
+      cloud: [
+        "      XXXX       ",
+        "    XXXXXXXX     ",
+        "  XXXXXXXXXXXX   ",
+        " XXXXXXXXXXXXXX  ",
+        "XXXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXXX",
+        " XXXXXXXXXXXXXXX ",
+        "                 ",
+      ],
+
+      // ── Restart icon ──
+      restart: [
+        "    XXXXXX    ",
+        "  XXXXXXXXXX  ",
+        " XX   XX   XX ",
+        " X    XX    X ",
+        "XX    XX    XX",
+        "XX   XXXX   XX",
+        "XX  XXXXXX  XX",
+        "XX   XXXX   XX",
+        "XX    XX    XX",
+        " X    XX    X ",
+        " XX        XX ",
+        "  XXXXXXXXXX  ",
+        "    XXXXXX    ",
+      ],
+    };
+
+    // ─── Dust particles for ground effects ───
+    class DustSystem {
+      constructor() { this.particles = []; }
+
+      puff(x, y, count = 4) {
+        for (let i = 0; i < count; i++) {
+          this.particles.push({
+            x, y: y + Math.random() * 4,
+            vx: (Math.random() - 0.5) * 3 - 1,
+            vy: -(Math.random() * 2),
+            life: 1.0,
+            decay: 0.03 + Math.random() * 0.02,
+            size: 1 + Math.random() * 2,
+          });
+        }
+      }
+
+      runDust(x, y) {
+        if (Math.random() < 0.3) {
+          this.particles.push({
+            x: x + Math.random() * 6,
+            y: y + 2,
+            vx: -2 - Math.random() * 2,
+            vy: -(Math.random() * 1),
+            life: 0.5,
+            decay: 0.04,
+            size: 1 + Math.random(),
+          });
+        }
+      }
+
+      update() {
+        this.particles.forEach(p => {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.05;
+          p.life -= p.decay;
+        });
+        this.particles = this.particles.filter(p => p.life > 0);
+      }
+
+      draw(ctx) {
+        this.particles.forEach(p => {
+          ctx.globalAlpha = p.life * 0.4;
+          ctx.fillStyle = '#999';
+          ctx.fillRect(p.x, p.y, p.size, p.size);
+        });
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ─── Procedural Sound ───
+    let audioCtx = null;
+    function ensureAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function sfxJump() {
+      ensureAudio();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.type = 'square';
+      o.frequency.setValueAtTime(280, audioCtx.currentTime);
+      o.frequency.exponentialRampToValueAtTime(560, audioCtx.currentTime + 0.07);
+      g.gain.setValueAtTime(0.05, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+      o.start(audioCtx.currentTime);
+      o.stop(audioCtx.currentTime + 0.1);
+    }
+
+    function sfxDie() {
+      ensureAudio();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(350, audioCtx.currentTime);
+      o.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.35);
+      g.gain.setValueAtTime(0.07, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+      o.start(audioCtx.currentTime);
+      o.stop(audioCtx.currentTime + 0.35);
+    }
+
+    function sfxMilestone() {
+      ensureAudio();
+      [523, 659, 784].forEach((f, i) => {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.connect(g); g.connect(audioCtx.destination);
+        o.type = 'square';
+        o.frequency.setValueAtTime(f, audioCtx.currentTime + i * 0.07);
+        g.gain.setValueAtTime(0.035, audioCtx.currentTime + i * 0.07);
+        g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + i * 0.07 + 0.12);
+        o.start(audioCtx.currentTime + i * 0.07);
+        o.stop(audioCtx.currentTime + i * 0.07 + 0.12);
+      });
+    }
+
+    // ─── Generate background clouds ───
+    function makeClouds(count) {
+      const arr = [];
+      for (let i = 0; i < count; i++) {
+        arr.push({
+          x: Math.random() * W,
+          y: 30 + Math.random() * 120,
+          speed: 0.3 + Math.random() * 0.5,
+          plane: 'top',
+        });
+      }
+      for (let i = 0; i < count; i++) {
+        arr.push({
+          x: Math.random() * W,
+          y: 330 + Math.random() * 120,
+          speed: 0.3 + Math.random() * 0.5,
+          plane: 'bottom',
+        });
+      }
+      return arr;
+    }
+
+    // ─── Draw a pixel sprite ───
+    function drawSprite(ctx, sprite, x, y, color = COLOR) {
+      ctx.fillStyle = color;
+      const w = sprite[0].length * PX;
+      const h = sprite.length * PX;
+      for (let r = 0; r < sprite.length; r++) {
+        for (let c = 0; c < sprite[r].length; c++) {
+          if (sprite[r][c] === 'X') {
+            ctx.fillRect(x + c * PX, y + r * PX, PX, PX);
+          }
+        }
+      }
+      return { width: w, height: h };
+    }
+
+
+    // ════════════════════════════════════════
+    //  MAIN APP
+    // ════════════════════════════════════════
+
+    const App = () => {
+      const canvasRef = useRef(null);
+      const dust = useRef(new DustSystem());
+      const clouds = useRef(makeClouds(4));
+      const hiScore = useRef(0);
+      const milestone = useRef(0);
+
+      const gs = useRef({
+        running: false,
+        over: false,
+        winner: null,
+        score: 0,
+        speed: 6,
+        frame: 0,
+        entities: [],
+      });
+
+      const keys = useRef({});
+      const [status, setStatus] = useState('START');
+      const [winner, setWinner] = useState(0);
+      const [finalScore, setFinalScore] = useState(0);
+
+      const startGame = () => {
+        ensureAudio();
+        gs.current = {
+          running: true,
+          over: false,
+          winner: null,
+          score: 0,
+          speed: 6,
+          frame: 0,
+          entities: [
+            { id: 'p1', type: 'player', x: 120, y: TOP_Y, groundY: TOP_Y, vy: 0, jumping: false, ducking: false, alive: true, width: 48, height: 42 },
+            { id: 'p2', type: 'player', x: 120, y: BOT_Y, groundY: BOT_Y, vy: 0, jumping: false, ducking: false, alive: true, width: 48, height: 42 },
+          ],
+        };
+        dust.current = new DustSystem();
+        milestone.current = 0;
+        setStatus('PLAYING');
+      };
+
+      // ── Keyboard ──
+      useEffect(() => {
+        const dn = (e) => {
+          keys.current[e.key] = true;
+          if (e.key === ' ') {
+            e.preventDefault();
+            if (status === 'START' || status === 'GAMEOVER') startGame();
+          }
+        };
+        const up = (e) => { keys.current[e.key] = false; };
+        window.addEventListener('keydown', dn);
+        window.addEventListener('keyup', up);
+        return () => { window.removeEventListener('keydown', dn); window.removeEventListener('keyup', up); };
+      }, [status]);
+
+      // ── Game loop ──
+      useEffect(() => {
+        const cvs = canvasRef.current;
+        const ctx = cvs.getContext('2d');
+        let raf;
+
+        // ── UPDATE ──
+        const update = () => {
+          const s = gs.current;
+          if (!s.running) return;
+          s.frame++;
+
+          // ── Progressive difficulty ──
+          // Speed: ramps every 150 frames, accelerates over time, caps at 18
+          if (s.frame % 150 === 0) {
+            const ramp = 0.3 + Math.min(s.speed * 0.04, 0.5);
+            s.speed = Math.min(s.speed + ramp, 18);
+          }
+          s.score += s.speed / 10;
+
+          // Difficulty tier (0-1 normalized, used for scaling everything)
+          const difficulty = Math.min((s.speed - 6) / 12, 1);
+
+          // Milestone ding
+          const m = Math.floor(s.score / 100);
+          if (m > milestone.current) { milestone.current = m; sfxMilestone(); }
+
+          const p1 = s.entities.find(e => e.id === 'p1');
+          const p2 = s.entities.find(e => e.id === 'p2');
+
+          // Player 1 input
+          if (p1) {
+            if ((keys.current['w'] || keys.current['W']) && !p1.jumping && !p1.ducking) {
+              p1.vy = -15; p1.jumping = true; sfxJump();
+            }
+            p1.ducking = (!p1.jumping && (keys.current['s'] || keys.current['S']));
+          }
+
+          // Player 2 input
+          if (p2) {
+            if (keys.current['ArrowUp'] && !p2.jumping && !p2.ducking) {
+              p2.vy = -15; p2.jumping = true; sfxJump();
+            }
+            p2.ducking = (!p2.jumping && keys.current['ArrowDown']);
+          }
+
+          // Physics
+          s.entities.forEach(ent => {
+            if (ent.type === 'player') {
+              ent.vy += 0.75;
+              if (ent.ducking) ent.vy += 0.6;
+              ent.y += ent.vy;
+              if (ent.y >= ent.groundY) {
+                if (ent.jumping && ent.vy > 4) dust.current.puff(ent.x + 20, ent.groundY + 42, 5);
+                ent.y = ent.groundY; ent.vy = 0; ent.jumping = false;
+              }
+              // Running dust
+              if (!ent.jumping && !ent.ducking) dust.current.runDust(ent.x + 5, ent.groundY + 42);
+            } else if (ent.type === 'ptero') {
+              // Birds fly faster at higher difficulty
+              ent.x -= s.speed * (1.2 + difficulty * 0.3);
+              // Sine wave oscillates faster as difficulty rises
+              const sineSpeed = 0.02 + difficulty * 0.015;
+              ent.y = ent.startY + Math.sin(s.frame * sineSpeed + ent.phase) * ent.amp;
+            } else {
+              ent.x -= s.speed;
+            }
+          });
+
+          // ── Spawn obstacles ──
+          // Interval shrinks from ~110 down to 20 as difficulty rises
+          const interval = Math.max(20, Math.floor(110 - difficulty * 90));
+          if (s.frame % interval === 0) {
+            // Birds become more likely at higher difficulty (45% -> 70%)
+            const birdChance = 0.45 + difficulty * 0.25;
+            const isPtero = Math.random() < birdChance;
+            const bottom = Math.random() > 0.5;
+
+            if (isPtero) {
+              s.entities.push({
+                id: `o_${s.frame}`, type: 'ptero',
+                x: W + 40,
+                startY: (TOP_Y + BOT_Y) / 2 - 50,
+                y: 0,
+                phase: Math.random() * Math.PI * 2,
+                amp: 150 + difficulty * 40,
+                width: 30, height: 30,
+              });
+            } else {
+              // At higher difficulty, large cacti become more common
+              const variant = Math.random() > (0.5 - difficulty * 0.2) ? 'large' : 'small';
+              s.entities.push({
+                id: `o_${s.frame}`, type: 'cactus', variant,
+                x: W + 30,
+                y: bottom ? BOT_Y : TOP_Y,
+                width: 27, height: 30,
+              });
+            }
+
+            // At high difficulty, sometimes spawn a second obstacle on the other lane
+            if (difficulty > 0.4 && Math.random() < difficulty * 0.35) {
+              const variant2 = Math.random() > 0.5 ? 'large' : 'small';
+              s.entities.push({
+                id: `o2_${s.frame}`, type: 'cactus', variant: variant2,
+                x: W + 30 + Math.random() * 60,
+                y: bottom ? TOP_Y : BOT_Y,
+                width: 27, height: 30,
+              });
+            }
+          }
+
+          // Cleanup
+          s.entities = s.entities.filter(e => e.x > -120 || e.type === 'player');
+
+          // Collision
+          const hit = (a, b) => {
+            const m = 10;
+            return !(b.x > a.x + a.width - m || b.x + b.width - m < a.x ||
+                     b.y > a.y + a.height - m || b.y + b.height - m < a.y);
+          };
+          const obs = s.entities.filter(e => e.type !== 'player');
+          for (const o of obs) {
+            if (p1 && hit(p1, o)) { endGame(2, p1); return; }
+            if (p2 && hit(p2, o)) { endGame(1, p2); return; }
+          }
+        };
+
+        const endGame = (w, dead) => {
+          gs.current.running = false;
+          gs.current.over = true;
+          gs.current.deadPlayer = dead.id;
+          const sc = Math.floor(gs.current.score);
+          if (sc > hiScore.current) hiScore.current = sc;
+          dust.current.puff(dead.x + 20, dead.y + 20, 12);
+          sfxDie();
+          setWinner(w);
+          setFinalScore(sc);
+          setStatus('GAMEOVER');
+        };
+
+        // ── DRAW ──
+        const draw = () => {
+          const s = gs.current;
+          ctx.fillStyle = '#1a1a1a';
+          ctx.fillRect(0, 0, W, H);
+
+          // Background: draw clouds
+          clouds.current.forEach(c => {
+            c.x -= c.speed;
+            if (c.x < -80) c.x = W + 40;
+            drawSprite(ctx, SPRITES.cloud, c.x, c.y, '#2a2a2a');
+          });
+
+          // Ground lines
+          ctx.beginPath();
+          ctx.moveTo(0, TOP_Y + 66); ctx.lineTo(W, TOP_Y + 66);
+          ctx.moveTo(0, BOT_Y + 66); ctx.lineTo(W, BOT_Y + 66);
+          ctx.strokeStyle = '#cacaca';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Ground dashes (scrolling)
+          ctx.setLineDash([6, 14]);
+          ctx.lineDashOffset = -(s.frame || 0) * (s.speed || 0);
+          ctx.beginPath();
+          ctx.moveTo(0, TOP_Y + 68); ctx.lineTo(W, TOP_Y + 68);
+          ctx.moveTo(0, BOT_Y + 68); ctx.lineTo(W, BOT_Y + 68);
+          ctx.strokeStyle = '#333';
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Ground texture dots
+          ctx.fillStyle = '#333';
+          const scroll = (s.frame || 0) * (s.speed || 0);
+          for (let i = 0; i < 25; i++) {
+            const xp = (((i * 71) - scroll) % W + W) % W;
+            ctx.fillRect(xp, TOP_Y + 72, 3, 1);
+            ctx.fillRect(xp, TOP_Y + 78, 1, 1);
+            ctx.fillRect((xp + 41) % W, BOT_Y + 72, 3, 1);
+            ctx.fillRect((xp + 41) % W, BOT_Y + 78, 1, 1);
+          }
+
+          // Render entities
+          if (s.entities) {
+            s.entities.forEach(ent => {
+              if (ent.type === 'player') {
+                const isDead = s.over && s.deadPlayer === ent.id;
+                const runFrame = Math.floor((s.frame || 0) / 6) % 2;
+
+                let sprite;
+                if (isDead) {
+                  sprite = SPRITES.dinoDead;
+                } else if (ent.ducking) {
+                  sprite = runFrame ? SPRITES.dinoDuck1 : SPRITES.dinoDuck2;
+                } else if (ent.jumping) {
+                  sprite = SPRITES.dinoRun1; // static pose in air
+                } else {
+                  sprite = runFrame ? SPRITES.dinoRun1 : SPRITES.dinoRun2;
+                }
+                const dims = drawSprite(ctx, sprite, ent.x, ent.y);
+                ent.width = dims.width;
+                ent.height = dims.height;
+
+              } else if (ent.type === 'cactus') {
+                const sprite = ent.variant === 'large' ? SPRITES.cactusLarge : SPRITES.cactusSmall;
+                const dims = drawSprite(ctx, sprite, ent.x, ent.y);
+                ent.width = dims.width;
+                ent.height = dims.height;
+
+              } else if (ent.type === 'ptero') {
+                const wingFrame = Math.floor((s.frame || 0) / 10) % 2;
+                const sprite = wingFrame ? SPRITES.birdUp : SPRITES.birdDown;
+                const dims = drawSprite(ctx, sprite, ent.x, ent.y);
+                ent.width = dims.width;
+                ent.height = dims.height;
+              }
+            });
+          }
+
+          // Dust particles
+          dust.current.update();
+          dust.current.draw(ctx);
+
+          // HUD: score
+          ctx.font = 'bold 16px Courier New, monospace';
+          const sc = Math.floor(s.score || 0).toString().padStart(5, '0');
+          const hi = hiScore.current.toString().padStart(5, '0');
+          ctx.fillStyle = '#666';
+          ctx.fillText(`HI ${hi}`, W - 290, 28);
+          ctx.fillStyle = '#cacaca';
+          ctx.fillText(sc, W - 90, 28);
+
+          // Player zone labels
+          ctx.font = '10px Courier New, monospace';
+          ctx.fillStyle = '#444';
+          ctx.fillText('P1', 15, TOP_Y + 62);
+          ctx.fillText('P2', 15, BOT_Y + 62);
+        };
+
+        // ── Loop ──
+        const loop = () => {
+          update();
+          draw();
+          raf = requestAnimationFrame(loop);
+        };
+
+        if (status !== 'START') {
+          raf = requestAnimationFrame(loop);
+        } else {
+          // Title screen
+          ctx.fillStyle = '#1a1a1a';
+          ctx.fillRect(0, 0, W, H);
+
+          // Draw clouds
+          clouds.current.forEach(c => {
+            drawSprite(ctx, SPRITES.cloud, c.x, c.y, '#2a2a2a');
+          });
+
+          // Ground
+          ctx.beginPath();
+          ctx.moveTo(0, TOP_Y + 66); ctx.lineTo(W, TOP_Y + 66);
+          ctx.moveTo(0, BOT_Y + 66); ctx.lineTo(W, BOT_Y + 66);
+          ctx.strokeStyle = '#cacaca';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Idle dinos
+          drawSprite(ctx, SPRITES.dinoRun1, 120, TOP_Y);
+          drawSprite(ctx, SPRITES.dinoRun1, 120, BOT_Y);
+        }
+
+        return () => cancelAnimationFrame(raf);
+      }, [status]);
+
+      return (
+        <div id="game-wrapper">
+          <h1>Dino Duel</h1>
+          <div className="subtitle">Pretext Edition</div>
+
+          <div id="game-container" style={{ width: W, height: H }}>
+            <canvas ref={canvasRef} width={W} height={H} />
+            <div className="midline"></div>
+
+            {status === 'START' && (
+              <div className="overlay">
+                <div className="overlay-title">D I N O &nbsp; D U E L</div>
+                <div className="overlay-msg">Outlast your opponent</div>
+                <div className="overlay-sub">Two players, one survives</div>
+                <button id="start-btn" className="btn" onClick={startGame}>START</button>
+                <div className="hint">or press SPACE</div>
+              </div>
+            )}
+
+            {status === 'GAMEOVER' && (
+              <div className="overlay">
+                <div className="game-over-title">G A M E &nbsp; O V E R</div>
+                <div className="winner-text">Player {winner} Wins!</div>
+                <div className="score-display">SCORE: {finalScore.toString().padStart(5, '0')}</div>
+                <button id="restart-btn" className="btn" onClick={startGame}>RESTART</button>
+                <div className="hint">or press SPACE</div>
+              </div>
+            )}
+          </div>
+
+          <div className="controls-bar">
+            <div>
+              <strong>PLAYER 1 (TOP)</strong>
+              Jump: W &nbsp;|&nbsp; Duck: S
+            </div>
+            <div className="right">
+              <strong>PLAYER 2 (BOTTOM)</strong>
+              Jump: ↑ &nbsp;|&nbsp; Duck: ↓
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
